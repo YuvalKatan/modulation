@@ -1,0 +1,372 @@
+% שאלה 1 - אפנון DSB עם רעש לבן
+% ניקוי שולחן עבודה 
+clear all ; clc; close all;
+
+% טעינת קובץ השמע
+[audio, fs_audio] = audioread('Recording.mp3');
+audio = mean(audio, 2); % הפיכת אודיו לסיגנל חד-ערוצי
+
+% השמעת האודיו המקורי
+sound(audio, fs_audio);
+pause(length(audio) / fs_audio); % השהייה באורך ההקלטה למניעת השמעת כמה הקלטות ביחד
+
+% צריך לשנות קצת דגימה ל200 KHZ בגלל הגל נושא כדי שהתדרים הגבוהים ישמרו כדי
+% שלא יהיה שיכפולים ספקטראלים (Aliasing) לפי נייקויסט 
+target_fs = 200e3;
+audio = resample(audio, target_fs, fs_audio);
+fs = target_fs;
+
+% אות מידע - הקלטת קול
+m_t =(audio / max(abs(audio)));  % נורמליזציה של האות כי צריך לשמור על ערכים בין מינוס אחד לאחד כמה מערכות מחשב עובדות בקול 
+
+% ציר זמן לפי זמן מחזור T=(1/fs) 
+t = (0:length(audio)-1)/fs; 
+fc = 100e3;  % תדר הנשא 100kHz
+
+% מעטפת DSB 
+g_t_DSB=4* m_t; % מעטפת SSB 
+
+% אפנון DSB
+s_t_DSB = 4 * m_t'.* cos(2*pi*fc*t);
+
+% איפנון LSB ע"י חלק מרוכב של מסנן הילברט 
+hilbert_m = imag(hilbert(m_t));
+LSB_t = 2*m_t'.* cos(2*pi*fc*t) + 2*hilbert_m' .* sin(2*pi*fc*t);
+
+% חישוב הספק האות המאופנן לפני רעש SSDןDSBוmt
+P_m = mean((2*m_t).^2);
+P_s_DSB = mean(((s_t_DSB)/2).^2);
+P_s_LSB = mean(LSB_t.^2);
+
+% השמעת האות המאופנן DSB
+sound(s_t_DSB,fs_audio);
+pause(length(s_t_DSB) / fs_audio); % השהייה באורך ההקלטה למניעת השמעת כמה הקלטות ביחד
+
+% השמעת האות המאופנן LSB
+sound(LSB_t,fs_audio);
+pause(length(LSB_t) / fs_audio); % השהייה באורך ההקלטה למניעת השמעת כמה הקלטות ביחד
+
+% שיחזור איפנון DSB
+r_t_DSB = s_t_DSB .* cos(2*pi*fc*t); % כפל בנשא
+[b, a] = butter(31, (fs_audio/2) / (fs/2)); % פילטר מעבר נמוך תוד התחשבות בשינוי הדגימה משורה 13 (צריך לבדוק עם מסנן צבישף
+m_t_recovered_DSB = filtfilt(b, a, r_t_DSB);
+
+%שיחזור איפנון LSB
+recovered_t_LSB = LSB_t.* cos(2*pi*fc*t);  % הכפלת האות בגל הנשא
+[b, a] = butter(5, (10e3)/(fs/2), 'low');  % מסנן מעביר נמוכים
+recovered_t_LSB = filtfilt(b, a, recovered_t_LSB);
+
+% השמעת האות המשוחזר  DSB
+m_t_recovered_DSB = resample(m_t_recovered_DSB, fs_audio, fs); % החזרת קצב דגימה 
+sound(m_t_recovered_DSB, fs_audio);
+pause(length(m_t_recovered_DSB) / fs_audio);  % השהייה באורך ההקלטה למניעת השמעת כמה הקלטות ביחד
+
+% השמעת שיחזור LSB
+recovered_t_LSB = resample(recovered_t_LSB, fs_audio, fs); % החזרת קצב דגימה 
+sound(recovered_t_LSB, fs_audio);
+pause(length(recovered_t_LSB) / fs_audio);  % השהייה באורך ההקלטה למניעת השמעת כמה הקלטות ביחד 
+
+% ספקרטום המעטפת DSB
+N = length(t);
+% f = ((-N)/2:N/2-1)*(fs/N);  % ציר התדר
+f=linspace(-fs/2,fs/2,1341800);
+G_f_DSB = abs(fftshift(fft(g_t_DSB,N)))/N; % התמרת פורייה מהירה והזזה לסידור ספקטרום
+
+%  DSB וLSB ספקטרום האות המאופנן
+% f = (-N/2:N/2-1)*(N);  % ציר התדר
+S_f_DSB = abs(fftshift(fft(s_t_DSB,N)))/N; % התמרת פורייה מהירה והזזה לסידור ספקטרום 
+S_f_LSB = abs(fftshift(fft(LSB_t,N)))/N;% התמרת פורייה מהירה והזזה לסידור ספקטרום 
+
+%  DSBהדפסת גרפים של של המעטפת ושל אות מאופנן 
+figure;
+plot(t, g_t_DSB);
+title('מעטפת האות g(t)_DSB'); xlabel('[sec] זמן'); ylabel('g(t)_DSB'); grid on;
+
+figure;
+plot(f, G_f_DSB);
+title('ספקרום אות המעטפת G(f)_DSB'); xlabel('תדר [Hz]'); ylabel('G(f)_DSB'); grid on;
+
+figure;
+plot(t, s_t_DSB);
+title('אות מאופנן בזמן  s(t)_DSB'); xlabel('[sec] זמן'); ylabel('s(t)_DSB'); grid on;
+
+figure;
+plot(f, S_f_DSB);
+title('ספקטרום האות המאופנן S(f)'); xlabel('תדר [Hz]'); ylabel('|S(f)|'); grid on;
+
+
+% חישוב ספקטרום אות המידע למציאת רוחב הסרט
+N = length(m_t);
+freqs = (-N/2:N/2-1)*(fs/N);  % ציר התדר
+M_f = abs(fftshift(fft(m_t, N)))/N; % התמרת פוריה של אות המידע 
+
+% חישוב רוחב הסרט של אות המידע B_m
+threshold = max(M_f) * 0.01; % סף של 1% מהאמפליטודה המקסימלית
+valid_indices = find(M_f > threshold); % מציאת אינדקסים של הרמוניות הגדולות מהרף 
+B_m = (max(freqs(valid_indices)) - min(freqs(valid_indices))) / 2;  % רוחב הפס 
+
+% חישוב רוחב הסרט של DSB על בסיס אות המידע
+BW_DSB = 2 * B_m;  % רוחב סרט DSB מחושב
+BW_LSB = B_m;   % רוחב סרט LSB מ
+
+% הוספת רעש לבן וחישוב SNR
+SNR_dB = 16;  % יחס אות לרעש בדציבלים
+P_noise = P_s_DSB / (10^(SNR_dB/10));
+n_t = abs(sqrt(P_noise) * randn(size(t)));
+s_t_n_DSB = (s_t_DSB/2) + n_t;  % אות מאופנן עם רעש 
+m_t_n= 2*m_t'+n_t;  % אות עם רעש 
+%  חישוב הספק האות עם רעש DSB
+P_n_DSB = mean(((s_t_n_DSB)).^2);
+P_m_t_n = mean(((m_t_n)).^2);
+Pav_n=mean(((n_t).^2));
+
+% השמעת איפנון DSB עם רעש לבן 
+sound(s_t_n_DSB, fs);
+pause(length(s_t_n_DSB) / fs); % השהייה באורך ההקלטה למניעת השמעת כמה הקלטות ביחד 
+
+% הדפסות גרפים 
+figure;
+plot(t, s_t_n_DSB);
+title(' DSBאות לאחר הוספת רעש'); xlabel('זמן [שניות]'); ylabel('אמפליטודה'); grid on;
+
+figure;
+plot(f, S_f_LSB);
+title('ספקטרום האות המאופנן LSB'); xlabel('תדר [Hz]'); ylabel('S_f_LSB'); grid on;
+
+% חישוב נצילות הספק
+Efficiency_Power_Before_Noise_DSB = (P_m / P_s_DSB) * 100;
+Efficiency_Power_LSB = (P_m / P_s_LSB) * 100;
+Efficiency_Power_After_Noise_DSB = (P_m_t_n / P_n_DSB) * 100;
+
+% חישוב נצילות ספקטרלית
+Efficiency_Spectral_Before_Noise_DSB = (B_m / BW_DSB) * 100;
+Efficiency_Spectral_LSB = (B_m / BW_LSB) * 100;
+Efficiency_Spectral_After_Noise_DSB = (B_m / BW_DSB) * 100;
+
+% חישוב SNR לפני ואחרי דמודולציה
+SNR_out=(0.5*2*2*m_t')/(Pav_n);
+SNR_ref=(P_s_DSB)/(2*(Pav_n));
+    FOM_DSB =(SNR_out)/(SNR_out);
+
+% הצגת התוצאות
+fprintf('רוחב הסרט של אות המידע: %.2f Hz\n', B_m);
+fprintf('רוחב הסרט של DSB: %.2f Hz\n', BW_DSB);
+fprintf('נצילות הספק לפני רעש: %.2f%%\n', Efficiency_Power_Before_Noise_DSB);
+fprintf('נצילות הספק אחרי רעש: %.2f%%\n', Efficiency_Power_After_Noise_DSB);
+fprintf('נצילות ספקטרלית לפני רעש: %.2f%%\n', Efficiency_Spectral_Before_Noise_DSB);
+fprintf('נצילות ספקטרלית אחרי רעש: %.2f%%\n', Efficiency_Spectral_After_Noise_DSB);
+fprintf('נצילות הספק LSB: %.2f%%\n', Efficiency_Power_LSB);
+fprintf('נצילות ספקטרלית LSB: %.2f%%\n', Efficiency_Spectral_LSB);
+fprintf('Figure of Merit (FOM) עבור DSB: %.2f\n', FOM_DSB);
+
+% אפנון FM
+t_FM = (0:length(audio)-2)/fs;% צריך להוריד איבר אחד מתי כדי להתאים בגלל פעולת cumsumוdiff
+kf = 500;  % מקדם האיפנון גדול יותר כי צריך להתאים לאות 
+s_FM = 100 * cos(2*pi*fc*t + 2*pi*kf * cumsum(m_t')/fs);  
+
+% השמעת האות המאופנן FM
+sound(s_FM, fs);
+pause(length(s_FM) / fs);
+
+figure;% הדפסת איפנון FM
+plot(t, s_FM);
+title('האות המאופנן FM'); xlabel('זמן [שניות]'); ylabel('אמפליטודה'); grid on;
+
+% N = length(t);
+% f = (-N/2:N/2-1)*(fs/N);  % ציר התדר
+S_f_FM = abs(fftshift(fft(s_FM,N)))/N; % התמרת פורייה מהירה והזזה לסידור ספקטרום
+P_f1_FM = abs(S_f_FM).^2; 
+
+figure;% הדפסת ספקטרום  FM
+plot(f, S_f_FM);
+title('ספקטרום FM'); xlabel('Hz'); ylabel('אמפליטודה'); grid on;
+
+% חישוב מקדם האפנון ורוחב הספקטרום לפי תנאי קרסון
+beta = (kf * max(abs(audio))) / (fs_audio/2);
+BW_FM = 2 * (beta + 1) * (fs_audio/2);
+% ללמרות שזה איפנון צר סרט השתמשתי ב
+fprintf('מקדם אפנון FM: %.6f, רוחב סרט לפי קרסון: %.2f Hz\n', beta, BW_FM);
+
+% חישוב נצילות ספקטרלית
+Efficiency_FM = ((fs_audio/2) / BW_FM) * 100;
+fprintf('נצילות ספקטרלית באפנון FM: %.2f%%\n', Efficiency_FM);
+% חישוב הספק FM
+f_min = -BW_FM/2;
+f_max = BW_FM/2;
+idx_band_carson = (f >= f_min) & (f <= f_max);  
+
+% חישוב ההספק הכולל בתחום זה (סכימת ההספקים בתוך BW_FM)
+P_band_FM= sum(P_f1_FM (idx_band_carson));
+fprintf('הספק לפי קראסון FM: %.7f%%\n', P_band_FM);
+
+% חישוב רוחב הסרט של אפ אמ בדיקה  B_m
+threshold_fm = max(S_f_FM) * 0.01; % סף של 1% מהאמפליטודה המקסימלית
+valid_indices_fm = find(S_f_FM> threshold_fm); % מציאת אינדקסים של הרמוניות הגדולות מהרף 
+B_m_fm = (max(freqs(valid_indices_fm)) - min(freqs(valid_indices_fm))) / 2;  % רוחב הפס 
+
+% שיחזור  FM
+     s_FM= ((s_FM)/100).*cos(2*pi*fc*t);
+     s_FM=acos(s_FM);
+     [b, a] = butter(31, (fs_audio/2) / (fs/2)); % פילטר מעבר נמוך
+  m_t_FM_recovered =  filtfilt(b, a, s_FM);
+  m_t_FM_recovered=diff(m_t_FM_recovered);% נגזרת כדי לחלץ את המידע 
+               
+figure;% הדפסת שיחזור FM
+plot(t_FM, m_t_FM_recovered);
+title('אות משוחזר FM'); xlabel('[sec] זמן'); ylabel('g(t)'); grid on;
+
+% השמעת האות המשוחזר מ-FM
+m_t_FM_recovered = resample(m_t_FM_recovered, fs_audio, fs);
+
+sound(m_t_FM_recovered, fs_audio);
+pause(length(m_t_FM_recovered) / fs_audio);  % השהייה באורך ההקלטה למניעת השמעת כמה הקלטות ביחד 
+
+
+% מקרה של תקלה
+t = (0:length(audio)-1)/fs;
+x_t = 0.5*(1+square(2*pi*500*t));  % אות ריבועי
+s_t1 = (x_t + m_t') .* cos(2*pi*fc*t);
+s_t2 = (-x_t + m_t') .* cos(2*pi*fc*t);
+g_t1 = (x_t + m_t');
+g_t2 = (-x_t + m_t');
+
+
+% השמעת האות עם התקלה
+sound(s_t1, fs);
+pause(length(s_t1) / fs); % השהייה באורך ההקלטה למניעת השמעת כמה הקלטות ביחד 
+
+% השמעת האות עם התקלה
+sound(s_t2, fs);
+pause(length(s_t2) / fs); % השהייה באורך ההקלטה למניעת השמעת כמה הקלטות ביחד
+% חישוב הספק
+P_s1 = mean(s_t1.^2);
+P_s2 = mean(s_t2.^2);
+fprintf('הספק של אות עם תקלה 1B: %.2f\n', P_s1);
+fprintf('הספק של אות עם תקלה 2B: %.2f\n', P_s2);
+
+figure;
+subplot(2,1,1);
+plot(t, g_t1);
+title('מעטפת עם תקלה 1'); xlabel('זמן [שניות]'); ylabel('אמפליטודה'); grid on;
+subplot(2,1,2);
+plot(t, g_t2);
+title('מעטפת עם תקלה 2'); xlabel('זמן [שניות]'); ylabel('אמפליטודה'); grid on;
+
+
+
+figure;
+subplot(2,1,1);
+plot(t, s_t1);
+title('אות מאופנן עם תקלה 1'); xlabel('זמן [שניות]'); ylabel('אמפליטודה'); grid on;
+subplot(2,1,2);
+plot(t, s_t2);
+title('אות מאופנן עם תקלה 2'); xlabel('זמן [שניות]'); ylabel('אמפליטודה'); grid on;
+
+% חישוב ספקטרום לשני המקרים
+S_f1 = abs(fftshift(fft(s_t1,N)))/N;
+S_f2 = abs(fftshift(fft(s_t2,N)))/N;
+
+
+G_f1 = abs(fftshift(fft(g_t1,N)))/N;
+G_f2 = abs(fftshift(fft(g_t2,N)))/N;
+
+
+figure;
+subplot(2,1,1);
+plot(t, G_f1);
+title('ספקטרום מעטפת עם תקלה 1'); xlabel('HZ'); ylabel('אמפליטודה'); grid on;
+subplot(2,1,2);
+plot(t, G_f2);
+title('ספקטרום מעטפת עם תקלה 2'); xlabel('HZ'); ylabel('אמפליטודה'); grid on;
+
+% הדפסה של גרפים 
+figure;
+subplot(2,1,1);
+plot(f, S_f1);
+title('ספקטרום האות המאופנן - תקלה 1'); xlabel('תדר [Hz]'); ylabel('|S(f)|'); grid on;
+subplot(2,1,2);
+plot(f, S_f2);
+title('ספקטרום האות המאופנן - תקלה 2'); xlabel('תדר [Hz]'); ylabel('|S(f)|'); grid on;
+% תכנון מסנן BPF
+
+% תכנון המסנן - הגדרת תדרי חיתוך
+low_cutoff = 2*24000 / (fs/2); 
+high_cutoff = 2*49900 / (fs/2); 
+[b, a] = butter(5, [low_cutoff, high_cutoff], 'bandpass');
+
+
+
+% סינון האותות
+s_t1_filtered = filter(b, a, s_t1);
+s_t2_filtered = filter(b, a, s_t2);
+
+% הצגת ספקטרום לאחר סינון
+S_f1_filtered = abs(fftshift(fft(s_t1_filtered, N))) / N;
+S_f2_filtered = abs(fftshift(fft(s_t2_filtered, N))) / N;
+
+% הצגת התוצאה: ספקטרום האותות לאחר הסינון
+figure;
+subplot(2, 1, 1);
+plot(f, S_f1_filtered);
+title('ספקטרום לאחר סינון BPF - תקלה 1');
+xlabel('תדר [Hz]');
+ylabel('|S(f)|');
+grid on;
+
+subplot(2, 1, 2);
+plot(f, S_f2_filtered);
+title('ספקטרום לאחר סינון BPF - תקלה 2');
+xlabel('תדר [Hz]');
+ylabel('|S(f)|');
+grid on;
+
+% כפל האות המאופנן עם אות הנושא 
+s_t1_demod = s_t1 .* cos(2*pi*fc*t);  % כפל עם תדר נושא
+s_t2_demod = s_t2 .* cos(2*pi*fc*t);  % כפל עם תדר נושא
+
+% סינון באמצעות פילטר LPF (Low Pass Filter) לחילוץ המידע
+[b, a] = butter(6, 5000/(fs/2), 'low');  % תכנון פילטר LPF עם תדר חיתוך 100 Hz
+s_t1_filtered1 = filter(b, a, s_t1_demod);  % סינון האות הראשון
+s_t2_filtered2 = filter(b, a, s_t2_demod);  % סינון האות השני
+
+S_f1_filtered11 = abs(fftshift(fft(s_t1_filtered1, N))) / N;
+S_f2_filtered22 = abs(fftshift(fft(s_t2_filtered2, N))) / N;
+
+% הצגת התוצאה המשוחזרת
+figure;
+subplot(2,1,1);
+plot(f, S_f1_filtered11);
+title('ספקטרום שיחזור - (תקלה 1)');
+xlabel('זמן [שניות]');
+ylabel('אמפליטודה');
+grid on;
+
+subplot(2,1,2);
+plot(f, S_f2_filtered22);
+title('ספקטרום - שיחזור (תקלה 2)');
+xlabel('HZ');
+ylabel('אמפליטודה');
+grid on;
+
+% הצגת התוצאה המשוחזרת
+figure;
+subplot(2,1,1);
+plot(t, s_t1_filtered1);
+title('אות משוחזר - סינכרוני (תקלה 1)');
+xlabel('זמן [שניות]');
+ylabel('אמפליטודה');
+grid on;
+
+subplot(2,1,2);
+plot(t, s_t2_filtered2);
+title('אות משוחזר - סינכרוני (תקלה 2)');
+xlabel('זמן [שניות]');
+ylabel('אמפליטודה');
+grid on;
+
+% השמעת האותות המשוחזרים
+sound((s_t1_filtered1+1), fs);
+pause(length(s_t1_filtered1) / fs);  % השהייה בזמן המתאים
+sound((s_t2_filtered2-1), fs);
+pause(length(s_t2_filtered2) / fs);  % השהייה בזמן המתאים
+
